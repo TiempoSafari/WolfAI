@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>WolfAI 单人狼人杀</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 24px; background: #0f172a; color: #e2e8f0; }
+    button, select { padding: 8px 12px; margin: 4px; }
+    .card { background:#1e293b; padding:16px; border-radius:10px; margin-bottom:12px; }
+    .alive { color: #34d399; }
+    .dead { color: #f87171; text-decoration: line-through; }
+  </style>
+</head>
+<body>
+  <h1>🐺 WolfAI 单人狼人杀（MVP）</h1>
+  <div class="card">
+    <button id="create">开始新游戏</button>
+    <button id="speech">生成AI发言</button>
+    <select id="voteTarget"></select>
+    <button id="vote">投票并进入下一天</button>
+  </div>
+
+  <div class="card">
+    <h3>LLM模式</h3>
+    <select id="llmMode">
+      <option value="cloud">cloud</option>
+      <option value="local">local</option>
+    </select>
+    <select id="provider">
+      <option value="qwen">qwen</option>
+      <option value="gpt">gpt</option>
+      <option value="ollama">ollama</option>
+    </select>
+    <button id="switchLlm">切换</button>
+  </div>
+
+  <div class="card" id="state"></div>
+
+  <script>
+    let gameId = null;
+
+    async function render() {
+      if (!gameId) return;
+      const res = await fetch(`/api/games/${gameId}`);
+      const s = await res.json();
+      const stateEl = document.getElementById('state');
+      stateEl.innerHTML = `
+        <p><b>Game:</b> ${s.game_id}</p>
+        <p><b>阶段:</b> ${s.phase} | <b>天数:</b> ${s.day_number}</p>
+        <p><b>事件:</b> ${s.latest_event || ''}</p>
+        <p><b>胜利方:</b> ${s.winner || '未结束'}</p>
+        <h4>玩家</h4>
+        <ul>${s.players.map(p => `<li class="${p.is_alive ? 'alive' : 'dead'}">${p.name} (${p.player_id}) ${p.is_human ? '[你]' : ''}</li>`).join('')}</ul>
+        <h4>AI发言</h4>
+        <ul>${s.speeches.map(sp => `<li>${sp.player_id}: ${sp.text}</li>`).join('')}</ul>
+      `;
+
+      const select = document.getElementById('voteTarget');
+      const alive = s.players.filter(p => p.is_alive && p.player_id !== 'p1');
+      select.innerHTML = alive.map(p => `<option value="${p.player_id}">${p.name}</option>`).join('');
+    }
+
+    document.getElementById('create').onclick = async () => {
+      const res = await fetch('/api/games', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ human_name:'你', mode:'quick' }) });
+      const s = await res.json();
+      gameId = s.game_id;
+      await render();
+    };
+
+    document.getElementById('speech').onclick = async () => {
+      if (!gameId) return;
+      await fetch(`/api/games/${gameId}/speeches`, { method:'POST' });
+      await render();
+    };
+
+    document.getElementById('vote').onclick = async () => {
+      if (!gameId) return;
+      const target = document.getElementById('voteTarget').value;
+      await fetch(`/api/games/${gameId}/vote`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ target_player_id: target }) });
+      await render();
+    };
+
+    document.getElementById('switchLlm').onclick = async () => {
+      if (!gameId) return;
+      const mode = document.getElementById('llmMode').value;
+      const provider = document.getElementById('provider').value;
+      await fetch(`/api/games/${gameId}/llm/switch`, {
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ mode, provider })
+      });
+      await render();
+    };
+  </script>
+</body>
+</html>
